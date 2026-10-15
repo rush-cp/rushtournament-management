@@ -1,0 +1,156 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RUSH CRIC</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080b10;color:white;font-family:Arial,sans-serif}
+header{padding:18px;background:#111820;border-bottom:2px solid #b8ff38}
+h1{margin:0;color:#b8ff38}
+main{max-width:850px;margin:auto;padding:12px}
+nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+button{padding:11px;border:0;border-radius:8px;background:#263140;color:white;font-weight:bold;cursor:pointer}
+nav button,.green{background:#b8ff38;color:#111}
+.card{background:#121923;border:1px solid #2b3748;padding:14px;border-radius:12px;margin-bottom:12px}
+input,select{width:100%;padding:11px;margin:5px 0 12px;background:#080d14;color:white;border:1px solid #354257;border-radius:7px}
+label{color:#b7c2d0;font-size:13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.score{font-size:38px;text-align:center;padding:22px;background:#080d14;border-radius:10px}
+.buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.buttons button{padding:17px 4px;font-size:18px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:9px 5px;border-bottom:1px solid #303a49}
+.page{display:none}.page.active{display:block}
+.small{color:#a8b3c3;font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>🏏 RUSH CRIC</h1><small>CRICKET TOURNAMENT MANAGER</small></header>
+<main>
+<nav>
+<button onclick="show('setup')">Tournament</button>
+<button onclick="show('live')">Live Score</button>
+<button onclick="show('fixtures')">Fixtures</button>
+<button onclick="show('points')">Points Table</button>
+<button onclick="show('stats')">Player Stats</button>
+</nav>
+
+<section id="setup" class="page active">
+<div class="card">
+<h3>Tournament Settings</h3>
+<label>Tournament Name</label><input id="tn" placeholder="TURF SERIES S3">
+<label>Overs per innings</label><input id="ov" type="number" value="6" min="1">
+<label>Points per win</label><input id="wp" type="number" value="2">
+<button class="green" onclick="save()">Save Settings</button>
+</div>
+<div class="card">
+<h3>Add Teams</h3>
+<input id="teamname" placeholder="Team name">
+<button class="green" onclick="addTeam()">+ Add Team</button>
+<div id="teams"></div>
+</div>
+<div class="card">
+<h3>Manually Add Fixture</h3>
+<label>Team A</label><select id="fa"></select>
+<label>Team B</label><select id="fb"></select>
+<label>Match Number</label><input id="fn" placeholder="Match 1">
+<button class="green" onclick="addFixture()">Add Fixture</button>
+<p class="small">Har team ke 3 matches manually schedule kar sakte ho.</p>
+</div>
+<div class="card">
+<button onclick="backup()">Export Backup</button>
+<button onclick="resetAll()">Reset Tournament</button>
+</div>
+</section>
+
+<section id="live" class="page">
+<div class="card">
+<h3>Select Match</h3><select id="match" onchange="selectMatch()"></select>
+<div id="start"></div>
+</div>
+<div id="scoring"></div>
+</section>
+
+<section id="fixtures" class="page"><div class="card"><h3>Fixtures & Results</h3><div id="flist"></div></div></section>
+<section id="points" class="page"><div class="card"><h3>Points Table</h3><div id="ptable"></div></div></section>
+<section id="stats" class="page"><div class="card"><h3>Player Statistics</h3><div id="pstats"></div></div></section>
+</main>
+
+<script>
+const KEY='rushcric_v1';
+let D=JSON.parse(localStorage.getItem(KEY)||'null')||{
+teams:[],fixtures:[],overs:6,winPoints:2,name:''
+};
+let current=null;
+function id(){return Math.random().toString(36).slice(2,10)}
+function save(){D.name=document.getElementById('tn').value;D.overs=+document.getElementById('ov').value||6;D.winPoints=+document.getElementById('wp').value||2;persist();alert('Settings saved')}
+function persist(){localStorage.setItem(KEY,JSON.stringify(D));render()}
+function show(p){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.getElementById(p).classList.add('active');render()}
+function name(t){return D.teams.find(x=>x.id===t)?.name||'?'}
+function addTeam(){let n=document.getElementById('teamname').value.trim();if(!n)return;if(D.teams.some(t=>t.name.toLowerCase()===n.toLowerCase()))return alert('Team already exists');D.teams.push({id:id(),name:n});document.getElementById('teamname').value='';persist()}
+function addFixture(){let a=fa.value,b=fb.value;if(!a||!b||a===b)return alert('Select two different teams');D.fixtures.push({id:id(),number:fn.value||'Match '+(D.fixtures.length+1),a,b,status:'Upcoming',innings:[]});persist()}
+function selectMatch(){current=D.fixtures.find(f=>f.id===match.value)||null;render()}
+function startMatch(){let f=current;if(!f)return;let toss=document.getElementById('toss').value,decision=document.getElementById('decision').value;let bat=decision==='bat'?toss:(toss===f.a?f.b:f.a);f.innings=[inn(bat,bat===f.a?f.b:f.a)];f.status='Live';persist()}
+function inn(bat,bowl){return {bat,bowl,r:0,w:0,legal:0,balls:[],batters:[],bowlers:[],s:'',ns:'',bw:'',done:false}}
+function bat(inn,n){let p=inn.batters.find(x=>x.n===n);if(!p){p={n,r:0,b:0,f:0,s:0,out:false};inn.batters.push(p)}return p}
+function bowl(inn,n){let p=inn.bowlers.find(x=>x.n===n);if(!p){p={n,r:0,b:0,w:0};inn.bowlers.push(p)}return p}
+function setPlayers(){let i=current.innings.at(-1);i.s=document.getElementById('s').value.trim();i.ns=document.getElementById('ns').value.trim();i.bw=document.getElementById('bw').value.trim();if(!i.s||!i.ns||!i.bw||i.s===i.ns)return alert('Enter two different batsmen and bowler');bat(i,i.s);bat(i,i.ns);bowl(i,i.bw);persist()}
+function score(n,type='run'){
+let f=current,i=f?.innings.at(-1);if(!i||i.done)return;
+if(!i.s||!i.ns||!i.bw)return alert('Set batsmen and bowler first');
+let legal=!['wide','nb'].includes(type),runs=type==='wide'?0:type==='nb'?Math.max(1,n):n,extra=type==='wide'||type==='nb'?1:0;
+let p=bat(i,i.s),q=bowl(i,i.bw);
+i.r+=runs+extra;p.r+=runs;if(legal)p.b++;
+if(type==='run'&&runs===4)p.f++;if(type==='run'&&runs===6)p.s++;
+q.r+=runs+extra;
+i.balls.push({n:i.s,r:runs,type});if(legal){i.legal++;q.b++;if([1,3,5].includes(runs))[i.s,i.ns]=[i.ns,i.s];if(i.legal%6===0)[i.s,i.ns]=[i.ns,i.s]}
+if(i.legal>=D.overs*6||i.w>=10||(f.innings.length===2&&i.r>=f.innings[0].r+1))endCheck();
+persist()
+}
+function wicket(){let f=current,i=f?.innings.at(-1);if(!i||i.done||!i.s)return alert('Set players first');bat(i,i.s).out=true;i.w++;i.legal++;i.balls.push({n:i.s,type:'W',r:0});bowl(i,i.bw).w++;bowl(i,i.bw).b++;
+if(i.w>=10||i.legal>=D.overs*6){endCheck()}else{let n=prompt('New batsman name?');if(n){i.s=n.trim();bat(i,i.s)}}
+if(i.legal%6===0)[i.s,i.ns]=[i.ns,i.s];persist()}
+function endCheck(){let f=current,i=f.innings.at(-1);i.done=true;if(f.innings.length===1){let ni=inn(i.bowl,i.bat);ni.target=i.r+1;f.innings.push(ni);alert('Innings over! Target: '+ni.target)}else finish(f)}
+function endInnings(){if(!current)return;endCheck();persist()}
+function finish(f){f.status='Completed';let a=f.innings[0],b=f.innings[1];f.result=b.r>a.r?name(b.bat)+' won by '+(10-b.w)+' wickets':b.r<a.r?name(a.bat)+' won by '+(a.r-b.r)+' runs':'Match tied';alert(f.result)}
+function newBatter(which){let i=current?.innings.at(-1);if(!i)return;let n=prompt('New batsman name');if(n){i[which]=n.trim();bat(i,i[which]);persist()}}
+function newBowler(){let i=current?.innings.at(-1);if(!i)return;let n=prompt('New bowler name');if(n){i.bw=n.trim();bowl(i,i.bw);persist()}}
+function swap(){let i=current?.innings.at(-1);if(i)[i.s,i.ns]=[i.ns,i.s];persist()}
+function editRuns(){let i=current?.innings.at(-1);if(!i)return;let n=prompt('Set total runs',i.r);if(n!==null&&+n>=0)i.r=+n;persist()}
+function finish(f){f.status='Completed';let a=f.innings[0],b=f.innings[1];f.result=b.r>a.r?name(b.bat)+' won by '+(10-b.w)+' wickets':b.r<a.r?name(a.bat)+' won by '+(a.r-b.r)+' runs':'Match tied';alert(f.result)}
+function render(){
+tn.value=D.name||'';ov.value=D.overs;wp.value=D.winPoints;
+teams.innerHTML=D.teams.map(t=>`<p>${t.name} <button onclick="delTeam('${t.id}')">Delete</button></p>`).join('');
+function options(sel){let old=sel.value;sel.innerHTML='<option value="">Select team</option>'+D.teams.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');if([...sel.options].some(o=>o.value===old))sel.value=old}
+options(fa);options(fb);
+let m=document.getElementById('match'),old=current?.id;m.innerHTML='<option value="">Select match</option>'+D.fixtures.map(f=>`<option value="${f.id}">${f.number}: ${name(f.a)} vs ${name(f.b)} (${f.status})</option>`).join('');if(D.fixtures.some(f=>f.id===old))m.value=old;current=D.fixtures.find(f=>f.id===m.value)||current;
+flist.innerHTML=D.fixtures.map(f=>`<div class="card"><b>${f.number}: ${name(f.a)} vs ${name(f.b)}</b><p>${f.status} ${f.result||''}</p><button onclick="current=D.fixtures.find(x=>x.id==='${f.id}');show('live')">Score / View</button><button onclick="delFixture('${f.id}')">Delete</button></div>`).join('')||'No fixtures added.';
+ptable.innerHTML=tablePoints();
+pstats.innerHTML=playerStats();
+renderScore()
+}
+function renderScore(){let el=document.getElementById('scoring');if(!current){start.innerHTML='Add a fixture first.';el.innerHTML='';return}
+if(!current.innings.length){start.innerHTML=`<p>${name(current.a)} vs ${name(current.b)}</p><label>Toss won by</label><select id="toss"><option value="${current.a}">${name(current.a)}</option><option value="${current.b}">${name(current.b)}</option></select><label>Elected to</label><select id="decision"><option value="bat">Bat</option><option value="bowl">Bowl</option></select><button class="green" onclick="startMatch()">Start Match</button>`;el.innerHTML='';return}
+start.innerHTML=`<b>${name(current.a)} vs ${name(current.b)}</b> · ${current.status}`;
+let i=current.innings.at(-1),target=i.target?`<p>Target ${i.target} · Need ${Math.max(0,i.target-i.r)} runs</p>`:'';
+el.innerHTML=`<div class="card"><div class="score">${name(i.bat)}<br>${i.r}/${i.w}<div style="font-size:17px">Overs ${Math.floor(i.legal/6)}.${i.legal%6}</div>${target}</div>
+<p>Striker: <b>${i.s||'Not set'}</b> · Non-striker: <b>${i.ns||'Not set'}</b></p><p>Bowler: <b>${i.bw||'Not set'}</b></p>
+${!i.s||!i.ns||!i.bw?`<h3>Set players</h3><label>Striker</label><input id="s" placeholder="Batsman 1"><label>Non-striker</label><input id="ns" placeholder="Batsman 2"><label>Bowler</label><input id="bw" placeholder="Bowler"><button class="green" onclick="setPlayers()">Save Players</button>`:''}
+<h3>Scoring</h3><div class="buttons">${[0,1,2,3,4,6].map(n=>`<button onclick="score(${n})">${n}</button>`).join('')}<button onclick="wicket()">WICKET</button><button onclick="score(0,'wide')">WIDE</button><button onclick="score(0,'nb')">NO BALL</button><button onclick="swap()">SWAP STRIKE</button><button onclick="newBatter('s')">New Striker</button><button onclick="newBatter('ns')">New Non-striker</button><button onclick="newBowler()">New Bowler</button><button onclick="endInnings()">End Innings</button><button onclick="editRuns()">Edit Runs</button></div></div>
+${current.innings.map((x,j)=>`<div class="card"><h3>Innings ${j+1}: ${name(x.bat)} ${x.r}/${x.w}</h3><h4>Batting</h4>${batTable(x)}<h4>Bowling</h4>${bowlTable(x)}</div>`).join('')}`;
+}
+function batTable(i){return '<table><tr><th>Batter</th><th>R</th><th>B</th><th>4</th><th>6</th></tr>'+i.batters.map(p=>`<tr><td>${p.n}${p.out?' out':'*'}</td><td>${p.r}</td><td>${p.b}</td><td>${p.f}</td><td>${p.s}</td></tr>`).join('')+'</table>'}
+function bowlTable(i){return '<table><tr><th>Bowler</th><th>Overs</th><th>Runs</th><th>W</th></tr>'+i.bowlers.map(p=>`<tr><td>${p.n}</td><td>${Math.floor(p.b/6)}.${p.b%6}</td><td>${p.r}</td><td>${p.w}</td></tr>`).join('')+'</table>'}
+function tablePoints(){let a=D.teams.map(t=>({id:t.id,n:t.name,p:0,w:0,l:0,t:0,pts:0,rf:0,ra:0}));D.fixtures.filter(f=>f.status==='Completed').forEach(f=>{let x=a.find(t=>t.id===f.a),y=a.find(t=>t.id===f.b);if(!x||!y)return;x.p++;y.p++;let i=f.innings[0],j=f.innings[1];x.rf+=i?.r||0;x.ra+=j?.r||0;y.rf+=j?.r||0;y.ra+=i?.r||0;if((i?.r||0)===(j?.r||0)){x.t++;y.t++;x.pts++;y.pts++}else{let win=j&&j.r>i.r?y:x,lose=win===x?y:x;win.w++;lose.l++;win.pts+=D.winPoints}});a.sort((x,y)=>y.pts-x.pts||((y.rf-y.ra)-(x.rf-x.ra)));return '<table><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>Pts</th><th>NRR*</th></tr>'+a.map(x=>`<tr><td>${x.n}</td><td>${x.p}</td><td>${x.w}</td><td>${x.l}</td><td>${x.pts}</td><td>${((x.rf-x.ra)/Math.max(1,x.p)).toFixed(2)}</td></tr>`).join('')+'</table><p class="small">*Simplified NRR estimate.</p>'}
+function playerStats(){let a={};D.fixtures.forEach(f=>(f.innings||[]).forEach(i=>{i.batters.forEach(p=>{let k=i.bat+'|'+p.n;a[k]??={team:name(i.bat),n:p.n,r:0,b:0,w:0};a[k].r+=p.r;a[k].b+=p.b});i.bowlers.forEach(p=>{let k=i.bowl+'|'+p.n;a[k]??={team:name(i.bowl),n:p.n,r:0,b:0,w:0};a[k].w+=p.w})}));return '<table><tr><th>Player</th><th>Team</th><th>Runs</th><th>Wkts</th><th>SR</th></tr>'+Object.values(a).map(p=>`<tr><td>${p.n}</td><td>${p.team}</td><td>${p.r}</td><td>${p.w}</td><td>${p.b?(p.r/p.b*100).toFixed(1):'—'}</td></tr>`).join('')+'</table>'}
+function delTeam(t){if(!confirm('Delete team and its fixtures?'))return;D.teams=D.teams.filter(x=>x.id!==t);D.fixtures=D.fixtures.filter(f=>f.a!==t&&f.b!==t);current=null;persist()}
+function delFixture(id){if(!confirm('Delete fixture?'))return;D.fixtures=D.fixtures.filter(f=>f.id!==id);if(current?.id===id)current=null;persist()}
+function resetAll(){if(confirm('Delete all tournament data?')){D={teams:[],fixtures:[],overs:6,winPoints:2,name:''};current=null;persist()}}
+function backup(){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(D,null,2)],{type:'application/json'}));a.download='rush-cric-backup.json';a.click()}
+render();
+</script>
+</body>
+</html>
